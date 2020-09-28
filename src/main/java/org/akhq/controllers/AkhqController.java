@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.akhq.configs.*;
 import org.akhq.modules.HasAnyPermission;
 
@@ -166,6 +167,7 @@ public class AkhqController extends AbstractController {
     @AllArgsConstructor
     @NoArgsConstructor
     @Getter
+    @Setter
     public static class AuthUser {
         private boolean logged = false;
         private String username;

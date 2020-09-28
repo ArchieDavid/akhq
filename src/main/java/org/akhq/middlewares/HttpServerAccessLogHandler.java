@@ -1,9 +1,11 @@
 package org.akhq.middlewares;
 
 import com.google.common.net.HttpHeaders;
+import io.micronaut.context.ApplicationContext;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.core.util.StringUtils;
+import io.micronaut.security.utils.SecurityService;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;
 import io.netty.channel.ChannelDuplexHandler;
@@ -14,6 +16,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.*;
 import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
+import org.akhq.controllers.AkhqController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.helpers.MessageFormatter;
@@ -23,6 +26,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import javax.inject.Inject;
 import javax.inject.Singleton;
 
 /**
@@ -38,6 +42,9 @@ public class HttpServerAccessLogHandler extends ChannelDuplexHandler {
     private List<String> filters = new ArrayList<>();
     private String logFormat;
     private final Logger accessLogger;
+
+    @Inject
+    private ApplicationContext applicationContext;
 
     public HttpServerAccessLogHandler(
         @Value("${akhq.server.access-log.name:access-log}") String name,
@@ -77,7 +84,7 @@ public class HttpServerAccessLogHandler extends ChannelDuplexHandler {
 
         AccessLog accessLog = attr.get();
         if (accessLog == null) {
-            accessLog = new AccessLog(logFormat);
+            accessLog = new AccessLog(logFormat, applicationContext);
             attr.set(accessLog);
         } else {
             accessLog.reset();
@@ -166,10 +173,12 @@ public class HttpServerAccessLogHandler extends ChannelDuplexHandler {
         private long startTime;
         private long contentLength;
         private String zonedDateTime;
+        private ApplicationContext applicationContext;
 
-        AccessLog(String logFormat) {
+        AccessLog(String logFormat, ApplicationContext applicationContext) {
             this.logFormat = logFormat;
             this.zonedDateTime = ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+            this.applicationContext = applicationContext;
         }
 
         private void reset() {
@@ -201,6 +210,7 @@ public class HttpServerAccessLogHandler extends ChannelDuplexHandler {
                     uri,
                     status,
                     inetAddress,
+                    getUserName(),
                     contentLength > -1L ? contentLength : MISSING,
                     port
                 }).getMessage();
@@ -219,6 +229,25 @@ public class HttpServerAccessLogHandler extends ChannelDuplexHandler {
                     accessLogger.info(message);
                 }
             }
+        }
+
+        private String getUserName() {
+            AkhqController.AuthUser authUser = new AkhqController.AuthUser();
+
+            if (applicationContext.containsBean(SecurityService.class)) {
+                SecurityService securityService = applicationContext.getBean(SecurityService.class);
+
+                securityService
+                        .getAuthentication()
+                        .ifPresent(authentication -> {
+                            if (authUser.isLogged()) {
+                                authUser.setUsername(authentication.getName());
+                            } else {
+                                authUser.setUsername("Not logged in");
+                            }
+                        });
+            }
+            return authUser.getUsername();
         }
     }
 }
